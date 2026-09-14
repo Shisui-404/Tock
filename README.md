@@ -4,80 +4,77 @@ A dependency-free, cross-platform alarm clock for the terminal. It uses a
 daemon process and a JSON file rather than an OS service or database, so it
 works the same way on Windows, macOS, Linux, and WSL with Python 3.10+.
 
-## Running the project
-
-> **Important:** alarms only ring while the daemon is running. Commands such
-> as `add`, `list`, `toggle`, and `remove` just edit the saved alarm file; they
-> do not schedule anything themselves. If the daemon is not running when an
-> alarm is due, nothing rings. When the daemon starts again, alarms that are
-> overdue by no more than `--grace` minutes ring, and older ones are marked
-> missed.
-
-The daemon can run in the background (recommended) or in the foreground.
-Run the commands from this directory. You can add alarms before or after
-starting the daemon, because it reloads the alarm file about every half second.
-
-### Option A: background daemon
+## Quick start
 
 ```bash
-python -m tock start                 # start the daemon; it keeps running after you close the terminal
-python -m tock add +1m --label "Tea"
-python -m tock status                # is it running? is an alarm ringing?
-python -m tock dismiss               # stop the ringing alarm
-python -m tock snooze                # or snooze it
-python -m tock stop                  # stop the daemon
+python -m tock start                    # start the background daemon
+python -m tock add +1m --label "Tea"    # ring in one minute
+python -m tock stop                     # stop the daemon when you're done
 ```
 
-When an alarm rings, the sound plays and a popup appears on top of other
-windows. It shows the alarm's label and time, with **Stop** and **Snooze**
-buttons. A background daemon has no keyboard, so use the popup or run
-`dismiss`/`snooze` from any terminal. If nobody responds, the alarm stops after
-`--ring-timeout` seconds (default 300). The daemon's output, including
-missed-alarm notices, goes to `daemon.log` in the data directory. `status`
-prints its path.
+Run the commands from this directory. Use `py -m tock` on Windows if `python`
+isn't on your PATH, or run `pip install .` and use `tock` directly.
 
-Check that popups and sound work on your machine before you rely on them:
+> **Alarms only ring while the daemon is running.** `add`, `list`, `toggle`,
+> and `remove` just edit the saved alarm file. If the daemon was off when an
+> alarm was due, it rings on the next start if it's no more than `--grace`
+> minutes late (default 15); otherwise it's marked missed.
+
+## Examples
+
+**Add alarms**
 
 ```bash
-python -m tock doctor --notify --sound
+python -m tock add +10m --label "Tea"                      # in 10 minutes
+python -m tock add 07:30 --label "Wake up" --repeat daily  # every day
+python -m tock add 09:00 --repeat weekdays                 # Monday to Friday
+python -m tock add 18:00 --repeat weekly --day fri         # every Friday
+python -m tock add 22:00 2026-09-20 --label "Wind down"    # on a specific date
 ```
 
-### Option B: foreground daemon (two terminals)
-
-**Terminal 1:** run the daemon and keep this terminal open.
+**Manage alarms**
 
 ```bash
-python -m tock daemon
+python -m tock list            # show alarms and their IDs
+python -m tock toggle a1b2     # pause or resume an alarm (any unique ID prefix)
+python -m tock remove a1b2     # delete an alarm
+python -m tock clear           # remove finished one-off alarms
 ```
 
-Alarms ring here and also show the popup. Press Enter to stop one, type `s`
-then Enter to snooze it, or use the popup buttons. Press Ctrl+C to stop the
-daemon.
+**When an alarm rings**
 
-**Terminal 2:** manage alarms.
+A sound plays and a popup appears with **Stop** and **Snooze** buttons. You can
+also respond from any terminal:
 
 ```bash
-python -m tock add +1m --label "Tea"
-python -m tock list
+python -m tock dismiss         # stop it
+python -m tock snooze          # ring again in 5 minutes
+python -m tock status          # is the daemon running? is anything ringing?
 ```
 
-Only one daemon can run per user, in either mode. A second one exits with
-`error: daemon already running`.
+If nobody responds, the alarm stops after 5 minutes.
 
-### Limits
+**Change the defaults**
 
-- The background daemon lasts until you run `stop` or restart the machine
-  (logging out may also end it, depending on the system). To
-  start it automatically at login, run `python -m tock start` from
-  Task Scheduler (Windows), a launchd agent (macOS), or your shell profile or
-  a systemd user unit (Linux).
-- On WSL, the daemon ends when the WSL VM shuts down, for example after
-  `wsl --shutdown` or when no WSL terminal is left open.
-- If a machine has no popup tool, see the table below: alarms still ring and
-  are logged, but nothing appears on screen. Pass `--no-notify` to `start` or
-  `daemon` to turn popups off.
-- A machine with no audio player falls back to the terminal bell, which you
-  won't hear from a background daemon.
+```bash
+python -m tock start --snooze 10 --ring-timeout 60    # 10-minute snooze, stop ringing after 60s
+python -m tock start --no-notify                      # sound only, no popup
+```
+
+**Check your setup**
+
+```bash
+python -m tock doctor --notify --sound    # test the popup and sound on this machine
+```
+
+### Foreground mode
+
+To watch alarms in a terminal instead, run `python -m tock daemon` and keep it
+open. Press Enter to stop a ringing alarm, `s` then Enter to snooze, and Ctrl+C
+to quit. `daemon` accepts the same options as `start`. Only one daemon can run
+per user, in either mode.
+
+## Platform support
 
 | Platform | Popup | Sound |
 | --- | --- | --- |
@@ -86,42 +83,26 @@ Only one daemon can run per user, in either mode. A second one exits with
 | macOS | `osascript` dialog with Stop/Snooze | `afplay` |
 | Linux | `zenity` dialog with Stop/Snooze, else a `notify-send` notification | `paplay`, `pw-play`, or `aplay` |
 
-Use `py -m tock` on Windows where `python` is not available. `python -m
-tock doctor` shows the selected local audio fallback and terminal
-capabilities.
+Limits:
 
-## Commands
+- The background daemon runs until `stop` or a restart (logging out may also
+  end it). To start it at login, run `python -m tock start` from Task Scheduler
+  (Windows), a launchd agent (macOS), or your shell profile or a systemd user
+  unit (Linux).
+- On WSL, the daemon ends when the WSL VM shuts down.
+- With no popup tool, alarms still ring and are logged. With no audio player,
+  Tock falls back to the terminal bell, which you won't hear from a
+  background daemon.
+- A user-space CLI can't wake a sleeping machine; see `--grace` above.
 
-```text
-python -m tock add 07:30 --label "Wake up" --repeat daily
-python -m tock add 07:30 --repeat weekdays
-python -m tock add 07:30 --repeat weekly --day mon
-python -m tock add 22:00 2026-09-20 --label "Wind down"
-python -m tock add +10m --label "Tea"
-python -m tock list
-python -m tock toggle <id-prefix>
-python -m tock remove <id-prefix>
-python -m tock clear
-python -m tock start --snooze 5 --grace 15 --ring-timeout 300
-python -m tock status
-python -m tock dismiss
-python -m tock snooze
-python -m tock stop
-python -m tock daemon --snooze 5 --grace 15 --ring-timeout 300
-python -m tock start --no-notify
-python -m tock doctor --notify --sound
-```
-
-`start` and `daemon` accept the same options. The popup buttons, `dismiss`,
-and `snooze` work in both modes. In a foreground daemon you can also press Enter
-to stop an alert or type `s` then Enter to snooze it.
+The daemon logs to `daemon.log` in the data directory; `status` prints its path.
 
 ## Design notes
 
-- Alarm state lives in platform-specific app data: `%APPDATA%\\tock` on
+- Alarm state lives in platform-specific app data: `%APPDATA%\tock` on
   Windows, `~/Library/Application Support/tock` on macOS, and
-  `$XDG_DATA_HOME/tock` (or `~/.local/share/tock`) on Linux. Set
-  `TOCK_HOME` to override it, especially for tests.
+  `$XDG_DATA_HOME/tock` (or `~/.local/share/tock`) on Linux. Set `TOCK_HOME`
+  to override it, especially for tests.
 - Updates use an advisory lock and atomic `os.replace`, preventing CLI edits
   from clobbering daemon state. A malformed JSON store is retained with a
   `.corrupt-<timestamp>` suffix and the app begins empty.
@@ -142,8 +123,6 @@ to stop an alert or type `s` then Enter to snooze it.
   child's output and closes the popup when the alert ends another way.
   PowerShell scripts use `-EncodedCommand`, and labels are passed as quoted
   literals or plain arguments, so a label can't inject commands.
-- A user-space CLI cannot wake a sleeping machine. On resume, overdue alarms
-  within the configured grace window ring; older alarms are recorded as missed.
 
 ## Development
 
