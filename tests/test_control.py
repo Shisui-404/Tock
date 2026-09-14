@@ -3,11 +3,14 @@ from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import os
+import subprocess
+import sys
 import unittest
 
 from tock.alert import AlertOutcome, AlertSession, disabled_notifier
 from tock.cli import build_parser, run
 from tock.compat.locks import FileLock
+from tock.compat.process import process_alive
 from tock.control import ControlChannel
 from tock.lifecycle import DaemonLifecycleError, stop_daemon
 from tock.models import Alarm, RepeatMode
@@ -160,11 +163,21 @@ class LifecycleCliTests(unittest.TestCase):
 
     def test_start_status_stop_real_background_daemon(self):
         self.assertIn("started in the background", self.run_cli("start"))
+        pid = ControlChannel(self.store.directory).daemon_pid()
+        self.assertTrue(process_alive(pid))
         try:
             self.assertIn("Daemon: running", self.run_cli("status"))
         finally:
             self.assertIn("stopped", self.run_cli("stop"))
+        # stop must not return while the process still holds daemon.log open (Windows can't clean it up)
+        self.assertFalse(process_alive(pid))
         self.assertIn("not running", self.run_cli("status"))
+
+    def test_process_alive(self):
+        self.assertTrue(process_alive(os.getpid()))
+        child = subprocess.Popen([sys.executable, "-c", "pass"])
+        child.wait()
+        self.assertFalse(process_alive(child.pid))
 
 
 if __name__ == "__main__":

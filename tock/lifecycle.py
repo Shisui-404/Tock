@@ -9,7 +9,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from .compat.process import spawn_detached
+from .compat.process import process_alive, spawn_detached
 from .control import ControlChannel
 from .scheduler import DaemonAlreadyRunningError
 
@@ -50,24 +50,29 @@ def stop_daemon(directory: Path, *, timeout: float = 5) -> int | None:
         raise DaemonLifecycleError("daemon is not running")
     pid = control.daemon_pid()
     control.send("stop")
-    if _wait_until_stopped(control, timeout):
+    if _wait_until_stopped(control, pid, timeout):
         return pid
     if pid is None:
         raise DaemonLifecycleError("daemon did not respond to the stop request")
     os.kill(pid, signal.SIGTERM)
-    if _wait_until_stopped(control, 2):
+    if _wait_until_stopped(control, pid, 2):
         control.clear_pid()
         return pid
     raise DaemonLifecycleError(f"daemon (pid {pid}) did not stop")
 
 
-def _wait_until_stopped(control: ControlChannel, timeout: float) -> bool:
+def _wait_until_stopped(control: ControlChannel, pid: int | None, timeout: float) -> bool:
+    # The daemon releases its lock before the process exits, and until it exits it
+    # still holds daemon.log open, which Windows refuses to delete or move.
+    def stopped() -> bool:
+        return not control.daemon_running() and (pid is None or not process_alive(pid))
+
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        if not control.daemon_running():
+        if stopped():
             return True
         time.sleep(0.1)
-    return not control.daemon_running()
+    return stopped()
 
 
 def _already_running(pid: int | None) -> str:
