@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tock"
+version = "0.1.0"
+description = "A dependency-free, cross-platform Python command-line alarm clock"
+requires-python = ">=3.10"
+
+[project.scripts]
+tock = "tock.cli:main"
+
+[tool.setuptools]
+packages = ["tock", "tock.compat"]
